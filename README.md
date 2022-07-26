@@ -19,7 +19,7 @@ _LDAP User client written in GO_
 > luser -gsl <user|number|email> <text to search>  - Separated by new line
 
 ### Search Groups / List Members
-> luser -G <group>
+> luser -G <group name>
 
 ## Install
 
