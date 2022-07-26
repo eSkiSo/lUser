@@ -1,0 +1,14 @@
+bindusername: "" #"cn=ro_admin,ou=sysadmins,dc=zflexsoftware,dc=com" #Bind username
+bindpassword: "" # Bind Password
+server: "" # LDAP server
+port: 389 # Ldap Port 
+basedn: "" # Base DN
+maxpwdage: 30 # password max ttl in days
+
+alt_bindusername: "" #"cn=ro_admin,ou=sysadmins,dc=zflexsoftware,dc=com" #Bind username
+alt_bindpassword: "" # Bind Password
+alt_server: "" # LDAP server
+alt_port: 389 # Ldap Port 
+alt_basedn: "" # Base DN
+alt_maxpwdage: 30 # password max ttl in days
+
