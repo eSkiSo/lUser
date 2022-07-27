@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -56,27 +57,20 @@ func printHelp() {
 	fmt.Println(colorYellow + "> luser -G <group>")
 }
 
-func testPrint() {
-	isBlocked := colorGreen + "NO ✅"
-	estadoConta := colorGreen + "OK ✅"
-	corTempo := colorGreen
+// Look, i've found a flag pkg
+var showGroups = flag.Bool("g", false, "show groups")
+var searchGroup = flag.Bool("G", false, "search group")
+var showGroupsList = flag.Bool("gl", false, "show groups in list")
+var showGroupsPipe = flag.Bool("gp", false, "show groups pipped")
+var showGroupsSearch = flag.Bool("gs", false, "show groups with search")
+var showHelp = flag.Bool("h", false, "show help")
+var showVersion = flag.Bool("v", false, "show version")
 
-	fmt.Printf(colorBlue+"User: "+colorYellow+boldStart+"%s"+styleReset+" \n", "guest")
-	fmt.Printf(colorBlue+"Name: "+colorYellow+boldStart+"%s"+styleReset+" \n", "Guest 1")
-	fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", "guest@domain.com")
-	fmt.Printf(colorBlue+"Numbers: "+colorYellow+boldStart+"%s / %s\n"+styleReset, "1000", "1001")
-	fmt.Printf(colorBlue+"Blocked: "+colorYellow+boldStart+"%s\n"+styleReset, isBlocked)
-	fmt.Printf(colorBlue+"Status: "+colorYellow+boldStart+"%s\n"+styleReset, estadoConta)
-	fmt.Printf(colorBlue+"Password Changed in: "+boldStart+colorYellow+" %s\n"+styleReset, "2022-07-26 23:50:00")
-	fmt.Printf(colorBlue+"Password Expirest in: "+boldStart+corTempo+" %d days\n"+styleReset, 30)
-	fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorYellow+" %s\n"+styleReset, "0")
-	fmt.Printf(colorBlue+"Script: "+boldStart+colorYellow+" %s\n"+styleReset, "")
+func init() {
+	flag.Parse()
 }
 
 func main() {
-
-	testPrint()
-	os.Exit(0)
 
 	if len(os.Args) < 2 {
 		fmt.Print(colorRed + boldStart + "You must supply a search parameter (user or group name if -G)" + styleReset + "\n")
@@ -85,21 +79,41 @@ func main() {
 	}
 
 	searchText := os.Args[1]
-	showGroups := false
 	showGroupsOptions := "p"
-	searchGroup := false
 
-	if searchText == "-h" || searchText == "-help" {
+	if *showHelp {
 		printHelp()
 		os.Exit(0)
 	}
 
-	if searchText == "-v" || searchText == "-version" {
+	if *showVersion {
 		fmt.Printf(colorCyan+boldStart+"lUser LDAP Cli v %v \n"+styleReset, Version)
 		os.Exit(0)
 	}
 
-	if len(os.Args) > 2 {
+	if *showGroupsList {
+		searchText = os.Args[2]
+		showGroupsOptions = "ls"
+		*showGroups = true
+	}
+
+	if *showGroupsPipe {
+		searchText = os.Args[2]
+		showGroupsOptions = "p"
+		*showGroups = true
+	}
+
+	if *showGroups {
+		searchText = os.Args[2]
+	}
+
+	if *showGroupsSearch {
+		searchText = os.Args[2]
+		showGroupsOptions = "s"
+		*showGroups = true
+	}
+
+	/*if len(os.Args) > 2 {
 		searchText = os.Args[2]
 		if os.Args[1] == "-g" {
 			showGroups = true
@@ -123,7 +137,7 @@ func main() {
 		if os.Args[1] == "-G" {
 			searchGroup = true
 		}
-	}
+	}*/
 
 	var cfg Configs
 	dirname, err := os.UserHomeDir()
@@ -151,7 +165,7 @@ func main() {
 	}
 	defer l.Close()
 
-	if searchGroup {
+	if *searchGroup {
 		search := "(cn=" + searchText + ")"
 
 		result, err := BindAndSearch(l, cfg, search, false)
@@ -219,7 +233,7 @@ func main() {
 			}
 		}
 		groups := ""
-		if showGroups {
+		if *showGroups {
 			groups = "\n " + displayGroups(result.Entries[0].GetAttributeValues("memberOf"), showGroupsOptions)
 		}
 		if expirationDays > 0 && expirationDays < 6 {
@@ -245,7 +259,7 @@ func main() {
 		fmt.Printf(colorBlue+"Password Expirest in: "+boldStart+corTempo+" %d days\n"+styleReset, expirationDays)
 		fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorYellow+" %s\n"+styleReset, result.Entries[0].GetAttributeValue("badPwdCount"))
 		fmt.Printf(colorBlue+"Script: "+boldStart+colorYellow+" %s\n"+styleReset, result.Entries[0].GetAttributeValue("scriptPath"))
-		if showGroups {
+		if *showGroups {
 			fmt.Printf(colorBlue+"Groups: "+boldStart+colorYellow+" %v\n"+styleReset, groups)
 		}
 	}
