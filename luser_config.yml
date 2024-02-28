@@ -1,3 +1,5 @@
+encryptpassword: false
+
 bindusername: "" #"cn=ro_admin,ou=sysadmins,dc=zflexsoftware,dc=com" #Bind username
 bindpassword: "" # Bind Password
 server: "" # LDAP server

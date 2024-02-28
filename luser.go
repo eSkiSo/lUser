@@ -10,24 +10,28 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
 const (
-	Version     = 0.3
-	colorRed    = "\033[31m"
+	Version     = "0.11"
+	colorRed    = "\033[91m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
-	colorCyan   = "\033[36m"
+	colorBlue   = "\033[36m" //was 34
+	colorCyan   = "\033[34m" //was 36
 	italicStart = "\033[3m"
 	boldStart   = "\033[1m"
 	styleReset  = "\033[0m"
 )
 
 type Configs struct {
+	EncriptPassword  bool `yaml:"encryptpassword" env:"EncryptPassword" env-default:"false"`
 	BindUsername     string `yaml:"bindusername" env:"BindUsername" env-default:"cn=admin,ou=sysadmins,dc=test,dc=com"`
 	BindPassword     string `yaml:"bindpassword" env:"BindPassword" env-default:"secret_password"`
 	FQDN             string `yaml:"server" env:"FQDN" env-default:""`
@@ -44,27 +48,38 @@ type Configs struct {
 
 func printHelp() {
 	fmt.Println(colorCyan + boldStart + "lUser LDAP Cli")
-	fmt.Println("> luser [optional argument] <user|number|email> <optional search if -gsl or -gs>\n ")
-	fmt.Println(colorBlue + "Search User")
-	fmt.Println(colorYellow + "> luser <user|number|email> \n ")
-	fmt.Println(colorBlue + "Search User with Groups")
-	fmt.Println(colorYellow + "> luser -g <user|number|email> " + colorCyan + italicStart + " Separated by |" + styleReset)
-	fmt.Println(colorYellow + "> luser -gl <user|number|email> " + colorCyan + italicStart + " Separated by new line \n " + styleReset)
+	fmt.Println("> luser [optional argument] <user|partial user|number|email|partial name> <optional search if -gsl or -gs>\n " + styleReset)
+	fmt.Println(colorBlue + "Search User" + styleReset)
+	fmt.Println(colorYellow + "> luser <user|partial user|number|email|partial name> \n " + styleReset)
+	fmt.Println(colorBlue + "Search User in both servers" + styleReset)
+	fmt.Println(colorYellow + "> luser -a <user|partial user|number|email|partial name> \n " + styleReset)
+	fmt.Println(colorBlue + "Search User with Groups" + styleReset)
+	fmt.Println(colorYellow + "> luser -g <user|number|email|partial name> " + colorCyan + italicStart + " Separated by |" + styleReset)
+	fmt.Println(colorYellow + "> luser -gl <user|number|email|partial name> " + colorCyan + italicStart + " Separated by new line \n " + styleReset)
 	fmt.Println(colorBlue + "Search User with search/filter of group")
-	fmt.Println(colorYellow + "> luser -gs <user|number|email> <text to search> " + colorCyan + italicStart + " Separated by |" + styleReset)
-	fmt.Println(colorYellow + "> luser -gsl <user|number|email> <text to search> " + colorCyan + italicStart + " Separated by new line \n " + styleReset)
+	fmt.Println(colorYellow + "> luser -gs <user|number|email|partial name> <text to search> " + colorCyan + italicStart + " Separated by |" + styleReset)
+	fmt.Println(colorYellow + "> luser -gsl <user|number|email|partial name> <text to search> " + colorCyan + italicStart + " Separated by new line \n " + styleReset)
 	fmt.Println(colorBlue + "Search Groups / List Members")
-	fmt.Println(colorYellow + "> luser -G <group>")
+	fmt.Println(colorYellow + "> luser -G <group|partial group name> \n")
+	fmt.Println(colorBlue + "Create encrypted password")
+	fmt.Println(colorYellow + "> luser -e <password to encrypt>")
+	fmt.Println(colorBlue + "Version")
+	fmt.Println(colorYellow + "> luser -v")
 }
 
 // Look, i've found a flag pkg
 var showGroups = flag.Bool("g", false, "show groups")
 var searchGroup = flag.Bool("G", false, "search group")
+var searchAlternative = flag.Bool("a", false, "search alternative server only")
+var encryptPassword = flag.Bool("e", false, "use this to get an encrypted password to use on configs")
 var showGroupsList = flag.Bool("gl", false, "show groups in list")
 var showGroupsPipe = flag.Bool("gp", false, "show groups pipped")
 var showGroupsSearch = flag.Bool("gs", false, "show groups with search")
+var showGroupsSearchList = flag.Bool("gls", false, "show groups with search in list")
 var showHelp = flag.Bool("h", false, "show help")
 var showVersion = flag.Bool("v", false, "show version")
+var bytes = []byte{35, 46, 57, 24, 85, 35, 24, 74, 87, 35, 88, 98, 66, 32, 14, 05}
+const MySecret string = "abc&h*~#^25#s2^=)^^7%b3g"
 
 func init() {
 	flag.Parse()
@@ -81,6 +96,16 @@ func main() {
 	searchText := os.Args[1]
 	showGroupsOptions := "p"
 
+	if *encryptPassword {
+		searchText = os.Args[2]
+		encText, err := Encrypt(searchText, MySecret)
+		if err != nil {
+			fmt.Println("Error encrypting your classified text: ", err)
+		}
+		fmt.Printf(colorCyan+boldStart+"lUser Encrypted Password (%s) :\033[0m %s \n"+styleReset, searchText, encText)
+		os.Exit(0)
+	}
+
 	if *showHelp {
 		printHelp()
 		os.Exit(0)
@@ -93,8 +118,12 @@ func main() {
 
 	if *showGroupsList {
 		searchText = os.Args[2]
-		showGroupsOptions = "ls"
+		showGroupsOptions = "l"
 		*showGroups = true
+	}
+
+	if *searchAlternative {
+		searchText = os.Args[2]
 	}
 
 	if *showGroupsPipe {
@@ -113,31 +142,15 @@ func main() {
 		*showGroups = true
 	}
 
-	/*if len(os.Args) > 2 {
+	if *showGroupsSearchList {
 		searchText = os.Args[2]
-		if os.Args[1] == "-g" {
-			showGroups = true
-		}
-		if os.Args[1] == "-gl" {
-			showGroups = true
-			showGroupsOptions = "l"
-		}
-		if os.Args[1] == "-gp" {
-			showGroups = true
-			showGroupsOptions = "p"
-		}
-		if os.Args[1] == "-gs" {
-			showGroups = true
-			showGroupsOptions = "s"
-		}
-		if os.Args[1] == "-gls" {
-			showGroups = true
-			showGroupsOptions = "ls"
-		}
-		if os.Args[1] == "-G" {
-			searchGroup = true
-		}
-	}*/
+		showGroupsOptions = "ls"
+		*showGroups = true
+	}
+
+	if *searchGroup {
+		searchText = os.Args[2]
+	}
 
 	var cfg Configs
 	dirname, err := os.UserHomeDir()
@@ -155,6 +168,23 @@ func main() {
 		os.Exit(0)
 	}
 
+	//handle encryting
+	if cfg.EncriptPassword {
+		//fmt.Println(colorCyan+italicStart + "Decripting password.." + styleReset)
+		decText, err := Decrypt(cfg.BindPassword, MySecret)
+		if err != nil {
+			fmt.Println(colorRed+"Error decrypting your encrypted password: ", err)
+		}
+		cfg.BindPassword = decText;
+
+		decText, err = Decrypt(cfg.Alt_BindPassword, MySecret)
+		if err != nil {
+			fmt.Println(colorRed+"Error decrypting your alternative encrypted password: ", err)
+		}
+		cfg.Alt_BindPassword = decText;
+	}
+	//fmt.Println(cfg.BindPassword)
+
 	// TLS Connection
 	//l, err := ConnectTLS(cfg)
 
@@ -166,12 +196,20 @@ func main() {
 	defer l.Close()
 
 	if *searchGroup {
-		search := "(cn=" + searchText + ")"
+		search := "(cn=*" + searchText + "*)"
+
+		fmt.Println(search)
 
 		result, err := BindAndSearch(l, cfg, search, false)
-		if err != nil {
+		if err != nil || *searchAlternative {
+
+			if err == nil && *searchAlternative {
+				//output first search
+				outputGroupResults(result)
+			}
+
 			if cfg.Alt_FQDN != "" {
-				fmt.Println(colorCyan + "Not found, search alternative...")
+				fmt.Println(colorCyan + "Searching alternative...")
 				l2, err := Connect(cfg, true)
 				if err != nil {
 					log.Fatal(err)
@@ -185,26 +223,25 @@ func main() {
 				log.Fatal(err)
 			}
 		}
-		membros := "\n " + displayUsers(result.Entries[0].GetAttributeValues("member"))
-		createdAt := handleDate(result.Entries[0].GetAttributeValue("whenCreated"))
-		whenChanged := handleDate(result.Entries[0].GetAttributeValue("whenChanged"))
-		//result.Entries[0].PrettyPrint(2)
-		fmt.Printf(colorBlue+"Group: "+colorYellow+boldStart+"%s"+styleReset+" \n", result.Entries[0].GetAttributeValue("sAMAccountName"))
-		fmt.Printf(colorBlue+"Description: "+colorYellow+boldStart+"%s"+styleReset+" \n", result.Entries[0].GetAttributeValue("description"))
-		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", result.Entries[0].GetAttributeValue("mail"))
-		fmt.Printf(colorBlue+"Created: "+colorYellow+boldStart+"%s"+styleReset+" \n", createdAt)
-		fmt.Printf(colorBlue+"Changed: "+colorYellow+boldStart+"%s"+styleReset+" \n", whenChanged)
-		fmt.Printf(colorBlue+"Members: "+boldStart+colorYellow+" %v\n"+styleReset, membros)
+
+		//output
+		outputGroupResults(result)
 
 	} else {
 
 		// Normal Bind and Search
-		search := "(|(uid=" + searchText + ")(employeeID=" + searchText + ")(employeeNumber=" + searchText + ")(samaccountname=" + searchText + ")(mail=" + searchText + "))"
+		search := "(|(uid=" + searchText + ")(employeeID=" + searchText + ")(employeeNumber=" + searchText + ")(samaccountname=" + searchText + ")(samaccountname=" + searchText + "*)(mail=" + searchText + ")(displayName=*" + searchText + "*))"
 
 		result, err := BindAndSearch(l, cfg, search, false)
-		if err != nil {
+		if err != nil || *searchAlternative {
+
+			if err == nil && *searchAlternative {
+				//output first search
+				outPutUserResults(result, showGroupsOptions, cfg)
+			}
+
 			if cfg.Alt_FQDN != "" {
-				fmt.Println(colorCyan + "Not found, searching alternative...")
+				fmt.Println(colorCyan + "Searching alternative...")
 				l2, err := Connect(cfg, true)
 				if err != nil {
 					log.Fatal(err)
@@ -218,23 +255,79 @@ func main() {
 				log.Fatal(err)
 			}
 		}
+		outPutUserResults(result, showGroupsOptions, cfg)
+	}
+}
 
-		corTempo := colorRed
-		estadoConta := getAccountStatus(result.Entries[0].GetAttributeValue("userAccountControl"))
-		passwordLastSet := result.Entries[0].GetAttributeValue("pwdLastSet")
+func Encode(b []byte) string {
+	return base64.StdEncoding.EncodeToString(b)
+}
 
-		passwordAlterada := "N/A"
-		expirationDays := 0
-		if passwordLastSet != "" {
-			if passwordLastSet == "0" {
-				passwordAlterada = colorRed + "Expired"
-			} else {
-				passwordAlterada, expirationDays = ldapTimeToUnixTime(passwordLastSet, cfg)
-			}
+func Decode(s string) []byte {
+	data, err := base64.StdEncoding.DecodeString(s)
+ 	if err != nil {
+  		panic(err)
+ 	}
+ 	return data
+}
+// Encrypt method is to encrypt or hide any classified text
+func Encrypt(text, MySecret string) (string, error) {
+	block, err := aes.NewCipher([]byte(MySecret))
+	if err != nil {
+		return "", err
+	}
+	plainText := []byte(text)
+	cfb := cipher.NewCFBEncrypter(block, bytes)
+	cipherText := make([]byte, len(plainText))
+	cfb.XORKeyStream(cipherText, plainText)
+	return Encode(cipherText), nil
+}
+
+// Decrypt method is to extract back the encrypted text
+func Decrypt(text, MySecret string) (string, error) {
+	block, err := aes.NewCipher([]byte(MySecret))
+	if err != nil {
+		return "", err
+	}
+
+	cipherText := Decode(text)
+	cfb := cipher.NewCFBDecrypter(block, bytes)
+	plainText := make([]byte, len(cipherText))
+	cfb.XORKeyStream(plainText, cipherText)
+	return string(plainText), nil
+}
+
+func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg Configs) (written bool) {
+	corTempo := colorRed
+	estadoConta := ""
+	passwordLastSet := ""
+	passwordAlterada := "N/A"
+	ignoreExpireDate := false
+	expirationDays := 0
+	groups := ""
+	isBlocked := colorGreen + "NO ✅"
+
+	fmt.Printf(colorCyan+"Found %d user(s) \n", len(result.Entries))
+
+	for _, resultado := range result.Entries {
+
+		corTempo = colorRed
+		estadoConta = getAccountStatus(resultado.GetAttributeValue("userAccountControl"))
+		ignoreExpireDate = getPasswordExpireIgnore(resultado.GetAttributeValue("userAccountControl"))
+		passwordLastSet = resultado.GetAttributeValue("pwdLastSet")
+
+		passwordAlterada = "N/A"
+		expirationDays = 0
+		if passwordLastSet == "0" {
+			passwordAlterada = colorRed + "Expired"
+		} else {
+			passwordAlterada, expirationDays = ldapTimeToUnixTime(passwordLastSet, cfg)
 		}
-		groups := ""
+
+		lastLogon, _ := ldapTimeToUnixTime(resultado.GetAttributeValue("lastLogon"), cfg)
+		groups = ""
 		if *showGroups {
-			groups = "\n " + displayGroups(result.Entries[0].GetAttributeValues("memberOf"), showGroupsOptions)
+			groups = "\n " + displayGroups(resultado.GetAttributeValues("memberOf"), showGroupsOptions)
 		}
 		if expirationDays > 0 && expirationDays < 6 {
 			corTempo = colorYellow
@@ -242,27 +335,96 @@ func main() {
 			corTempo = colorGreen
 		}
 
-		isBlocked := colorGreen + "NO ✅"
-		if result.Entries[0].GetAttributeValue("lockoutTime") != "0" && result.Entries[0].GetAttributeValue("lockoutTime") != "" {
+		if ignoreExpireDate {
+			expirationDays = 0
+			corTempo = colorGreen
+		}
+
+		isBlocked = colorGreen + "NO ✅"
+		if resultado.GetAttributeValue("lockoutTime") != "0" && resultado.GetAttributeValue("lockoutTime") != "" {
 			isBlocked = colorRed + "YES 🔐"
 		}
 
-		//result.Entries[0].PrettyPrint(2)
+		accountExpires := "Never"
+		corExpires := colorGreen
+		if resultado.GetAttributeValue("accountExpires") != "0" && resultado.GetAttributeValue("accountExpires") != "" {
+			ae, expiresIn := ldapTimeToUnixTimeDates(resultado.GetAttributeValue("accountExpires"))
+			if(expiresIn > 0 && expiresIn < 10000) {
+				if expiresIn < 1 {
+					corExpires = colorRed
+				} else if(expiresIn < 27) {
+					corExpires = colorYellow
+				}
+				accountExpires = fmt.Sprintf(corExpires+"%d " + styleReset + "days (%s)", expiresIn, ae[:16])
+			} else {
+				if(expiresIn < 10000) {
+					accountExpires = ae
+				}
+			}
+		}
 
-		fmt.Printf(colorBlue+"User: "+colorYellow+boldStart+"%s"+styleReset+" \n", result.Entries[0].GetAttributeValue("sAMAccountName"))
-		fmt.Printf(colorBlue+"Name: "+colorYellow+boldStart+"%s"+styleReset+" \n", result.Entries[0].GetAttributeValue("displayName"))
-		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", result.Entries[0].GetAttributeValue("mail"))
-		fmt.Printf(colorBlue+"Numbers: "+colorYellow+boldStart+"%s / %s\n"+styleReset, result.Entries[0].GetAttributeValue("employeeNumber"), result.Entries[0].GetAttributeValue("employeeID"))
+		distinguishedName := strings.Split(resultado.GetAttributeValue("distinguishedName"), ",")
+		tempDomain := ""
+		for _, element := range distinguishedName {
+			if strings.HasPrefix(element, "DC=") {
+				if tempDomain == "" {
+					tempDomain = strings.Replace(element, "DC=", "", -1)
+				} else {
+					tempDomain = tempDomain + "." + strings.Replace(element, "DC=", "", -1)
+				}
+				
+			}
+		}
+		//resultado.PrettyPrint(2)
+
+		fmt.Printf(colorBlue+"User: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("sAMAccountName"))
+		fmt.Printf(colorBlue+"Name: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("displayName"))
+		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
+		fmt.Printf(colorBlue+"Department: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("department"))
+		fmt.Printf(colorBlue+"Numbers: "+colorYellow+boldStart+"%s / %s\n"+styleReset, resultado.GetAttributeValue("employeeNumber"), resultado.GetAttributeValue("employeeID"))
 		fmt.Printf(colorBlue+"Blocked: "+colorYellow+boldStart+"%s\n"+styleReset, isBlocked)
 		fmt.Printf(colorBlue+"Status: "+colorYellow+boldStart+"%s\n"+styleReset, estadoConta)
+		fmt.Printf(colorBlue+"Account Expires: "+colorYellow+boldStart+"%s\n"+styleReset, accountExpires)
 		fmt.Printf(colorBlue+"Password Changed in: "+boldStart+colorYellow+" %s\n"+styleReset, passwordAlterada)
-		fmt.Printf(colorBlue+"Password Expirest in: "+boldStart+corTempo+" %d days\n"+styleReset, expirationDays)
-		fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorYellow+" %s\n"+styleReset, result.Entries[0].GetAttributeValue("badPwdCount"))
-		fmt.Printf(colorBlue+"Script: "+boldStart+colorYellow+" %s\n"+styleReset, result.Entries[0].GetAttributeValue("scriptPath"))
+		if !ignoreExpireDate {
+			fmt.Printf(colorBlue+"Password Expires in: "+boldStart+corTempo+" %d days\n"+styleReset, expirationDays)
+		}
+		fmt.Printf(colorBlue+"Last Logon: "+boldStart+colorYellow+" %s\n"+styleReset, lastLogon)
+		fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("badPwdCount"))
+		fmt.Printf(colorBlue+"Script: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("scriptPath"))
+		fmt.Printf(colorBlue+"Domain: "+boldStart+colorYellow+" %s\n"+styleReset, tempDomain)
+		fmt.Printf(colorBlue+"DN: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("distinguishedName"))		
+		fmt.Printf(colorBlue+"User Principal Name: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("userPrincipalName"))
 		if *showGroups {
 			fmt.Printf(colorBlue+"Groups: "+boldStart+colorYellow+" %v\n"+styleReset, groups)
 		}
+		fmt.Println("--------")
 	}
+	return true
+}
+
+func outputGroupResults(result *ldap.SearchResult) (written bool) {
+	membros := ""
+	createdAt := ""
+	whenChanged := ""
+
+	fmt.Printf(colorCyan+"Found %d group(s) \n", len(result.Entries))
+
+	for _, resultado := range result.Entries {
+		membros = "\n " + displayUsers(resultado.GetAttributeValues("member"))
+		createdAt = handleDate(resultado.GetAttributeValue("whenCreated"))
+		whenChanged = handleDate(resultado.GetAttributeValue("whenChanged"))
+		//resultado.PrettyPrint(2)
+		fmt.Printf(colorBlue+"Group: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("sAMAccountName"))
+		fmt.Printf(colorBlue+"Description: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("description"))
+		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
+		fmt.Printf(colorBlue+"Created: "+colorYellow+boldStart+"%s"+styleReset+" \n", createdAt)
+		fmt.Printf(colorBlue+"Changed: "+colorYellow+boldStart+"%s"+styleReset+" \n", whenChanged)
+		fmt.Printf(colorBlue+"Members: "+boldStart+colorYellow+" %v\n"+styleReset, membros)
+		fmt.Println("--------")
+	}
+
+	return true
 }
 
 // Ldap Connection with TLS
@@ -324,7 +486,7 @@ func BindAndSearch(l *ldap.Conn, cfg Configs, search string, alt bool) (*ldap.Se
 	if len(result.Entries) > 0 {
 		return result, nil
 	} else {
-		return nil, fmt.Errorf("user not found")
+		return nil, fmt.Errorf("not found")
 	}
 }
 
@@ -345,7 +507,7 @@ func displayGroups(groups []string, showGroupsOptions string) (result string) {
 		if showGroupsOptions == "p" {
 			//if default pipe just separate with pipes
 			result = result + strings.Replace(s[0], "CN=", "", -1) + " | "
-		} else if (showGroupsOptions == "s" || showGroupsOptions == "ls") && os.Args[3] != "" {
+		} else if (showGroupsOptions == "s" || showGroupsOptions == "ls") && len(os.Args) > 3 && os.Args[3] != "" {
 			//if search and 3rd param is available then either pipe (default) or list if "ls" is passed as 1rst param
 			nGroup := strings.Replace(s[0], "CN=", "", -1)
 			if strings.Contains(nGroup, os.Args[3]) {
@@ -357,7 +519,11 @@ func displayGroups(groups []string, showGroupsOptions string) (result string) {
 			}
 		} else {
 			//otherwise just list all groups by line
-			result = result + "🗂  " + strings.Replace(s[0], "CN=", "", -1) + " \n "
+			if (showGroupsOptions == "l" || showGroupsOptions == "ls") {
+				result = result + "🗂  " + strings.Replace(s[0], "CN=", "", -1) + " \n "
+			} else {
+				result = result + strings.Replace(s[0], "CN=", "", -1)  + " | "
+			}
 		}
 	}
 	return result
@@ -369,6 +535,31 @@ func displayUsers(users []string) (result string) {
 		result = result + "👤  " + strings.Replace(s[0], "CN=", "", -1) + " \n "
 	}
 	return result
+}
+
+func ldapTimeToUnixTimeDates(ldaptime string) (tm string, expDays int) {
+	if ldaptime == "" {
+		tm = ""
+		expDays = 0
+	} else {
+		converted, err := strconv.Atoi(ldaptime)
+		secsAfterADEpoch := converted / 10000000
+		ADToUnixConverter := ((1970-1601)*365 - 3 + math.Round((1970-1601)/4)) * 86400
+		timeStamp := int(secsAfterADEpoch) - int(ADToUnixConverter)
+		if err != nil {
+			tm = "ERROR"
+		} else {
+			tmp := time.Unix(int64(timeStamp), 0)
+			tx := tmp.UTC()
+			tm = tx.String()
+			timeAdded := tmp //tx.AddDate(0, 0, int(cfg.MaxPwdAge))
+			currentTime := time.Now()
+			timeDiff := timeAdded.Sub(currentTime).Hours() / 24
+			roundedTime := math.RoundToEven(timeDiff)
+			expDays = int(roundedTime)
+		}
+	}
+	return tm, expDays
 }
 
 func ldapTimeToUnixTime(ldaptime string, cfg Configs) (tm string, expDays int) {
@@ -475,6 +666,43 @@ func getAccountStatus(code string) (resultado string) {
 		resultado = "PARTIAL_SECRETS_ACCOUNT"
 	default:
 		resultado = code
+	}
+	return resultado
+}
+
+func getPasswordExpireIgnore(code string) (resultado bool) {
+	//resultado := code
+	switch code {
+	case "32":
+		resultado = true
+	case "64":
+		resultado = true
+	case "544":
+		resultado = true
+	case "546":
+		resultado = true
+	case "2080":
+		resultado = true
+	case "65536":
+		resultado = true
+	case "66048":
+		resultado = true
+	case "66050":
+		resultado = true
+	case "66080":
+		resultado = true
+	case "66082":
+		resultado = true
+	case "262690":
+		resultado = true
+	case "328194":
+		resultado = true
+	case "328226":
+		resultado = true
+	case "590336":
+		resultado = true
+	default:
+		resultado = false
 	}
 	return resultado
 }

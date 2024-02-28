@@ -10,6 +10,9 @@ _LDAP User client written in GO_
 ### Search User
 > luser <user|number|email>
 
+### Search User in both server
+> luser -a <user|partial user|number|email|partial name>
+
 ### Search User with Groups
 > luser -g <user|number|email> - Separated by  |
 > luser -gl <user|number|email> - Separated by new line
@@ -21,10 +24,13 @@ _LDAP User client written in GO_
 ### Search Groups / List Members
 > luser -G <group name>
 
+### Encrypt password to use on configs
+> luser -e <password to encrypt>
+
 ## Install
 
 Copy binary into a path that is defined in $PATH (/usr/bin/local in linux or mac for example)
-Fill **luser_config.yml** with configurations and copy to user root folder with the name **luser_config.yml**
+Fill **luser_config.yml** with configurations and copy to user root folder with the name **.luser_config.yml**
 
 ## Compilation
 
