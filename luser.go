@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	Version     = "0.12"
+	Version     = "0.14"
 	colorRed    = "\033[91m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
@@ -87,9 +87,9 @@ func printHelp() {
 	fmt.Println(colorCyan + boldStart + "lUser LDAP Cli")
 	fmt.Println("> luser [optional argument] <user|partial user|number|email|partial name> <optional search if -gsl or -gs>\n " + styleReset)
 	fmt.Println(colorBlue + "Search User" + styleReset)
-	fmt.Println(colorYellow + "> luser <user|partial user|number|email|partial name> \n " + styleReset)
+	fmt.Println(colorYellow + "> luser <user|partial user|number|email|partial name|sid> \n " + styleReset)
 	fmt.Println(colorBlue + "Search User in both servers" + styleReset)
-	fmt.Println(colorYellow + "> luser -a <user|partial user|number|email|partial name> \n " + styleReset)
+	fmt.Println(colorYellow + "> luser -a <user|partial user|number|email|partial name|sid> \n " + styleReset)
 	fmt.Println(colorBlue + "Search User with Groups" + styleReset)
 	fmt.Println(colorYellow + "> luser -g <user|number|email|partial name> " + colorCyan + italicStart + " Separated by |" + styleReset)
 	fmt.Println(colorYellow + "> luser -gl <user|number|email|partial name> " + colorCyan + italicStart + " Separated by new line \n " + styleReset)
@@ -267,7 +267,7 @@ func main() {
 	} else {
 
 		// Normal Bind and Search
-		search := "(|(uid=" + searchText + ")(employeeID=" + searchText + ")(employeeNumber=" + searchText + ")(samaccountname=" + searchText + ")(samaccountname=" + searchText + "*)(mail=" + searchText + ")(displayName=*" + searchText + "*))"
+		search := "(|(uid=" + searchText + ")(employeeID=" + searchText + ")(employeeNumber=" + searchText + ")(samaccountname=" + searchText + ")(samaccountname=" + searchText + "*)(mail=" + searchText + ")(displayName=*" + searchText + "*)(objectSid=" + searchText + "))"
 
 		result, err := BindAndSearch(l, cfg, search, false)
 		if err != nil || *searchAlternative {
@@ -417,6 +417,7 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 		fmt.Printf(colorBlue+"User: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("sAMAccountName"))
 		fmt.Printf(colorBlue+"Name: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("displayName"))
 		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
+		fmt.Printf(colorBlue+"CN: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("cn"))
 		fmt.Printf(colorBlue+"Department: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("department"))
 		fmt.Printf(colorBlue+"Numbers: "+colorYellow+boldStart+"%s / %s\n"+styleReset, resultado.GetAttributeValue("employeeNumber"), resultado.GetAttributeValue("employeeID"))
 		fmt.Printf(colorBlue+"Blocked: "+colorYellow+boldStart+"%s\n"+styleReset, isBlocked)
@@ -433,7 +434,11 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 		fmt.Printf(colorBlue+"DN: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("distinguishedName"))		
 		fmt.Printf(colorBlue+"User Principal Name: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("userPrincipalName"))
 		objectSid := resultado.GetRawAttributeValue("objectSid")
-		sid := DecodeSID(objectSid)
+		sidCheck := resultado.GetAttributeValue("objectSid")
+		sid := ""
+		if sidCheck != "" {
+			sid = DecodeSID(objectSid)
+		}
 		fmt.Printf(colorBlue+"SID: "+boldStart+colorYellow+" %s\n"+styleReset, sid)
 		if *showGroups {
 			fmt.Printf(colorBlue+"Groups: "+boldStart+colorYellow+" %v\n"+styleReset, groups)
@@ -457,6 +462,8 @@ func outputGroupResults(result *ldap.SearchResult) (written bool) {
 		//resultado.PrettyPrint(2)
 		fmt.Printf(colorBlue+"Group: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("sAMAccountName"))
 		fmt.Printf(colorBlue+"Description: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("description"))
+		fmt.Printf(colorBlue+"CN: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("cn"))
+		fmt.Printf(colorBlue+"DN: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("distinguishedName"))
 		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
 		fmt.Printf(colorBlue+"Created: "+colorYellow+boldStart+"%s"+styleReset+" \n", createdAt)
 		fmt.Printf(colorBlue+"Changed: "+colorYellow+boldStart+"%s"+styleReset+" \n", whenChanged)

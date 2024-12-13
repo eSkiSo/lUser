@@ -5,7 +5,7 @@ _LDAP User client written in GO_
 
 ## Use
 
-> luser [optional argument] <user|number|email> <optional search if -gsl or -gs>
+> luser [optional argument] <user|number|email|sid> <optional search if -gsl or -gs>
 
 ### Search User
 > luser <user|number|email>
