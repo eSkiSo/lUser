@@ -10,19 +10,22 @@ _LDAP User client written in GO_
 ### Search User
 > luser <user|number|email>
 
-### Search User in both server
-> luser -a <user|partial user|number|email|partial name>
+### Search User in both servers
+> luser -a <user|partial user|number|email|partial name|sid>
 
 ### Search User with Groups
-> luser -g <user|number|email> - Separated by  |
-> luser -gl <user|number|email> - Separated by new line
+> luser -g <user|number|email|partial name|sid> - Separated by  |
+> luser -gl <user|number|email|partial name|sid> - Separated by new line
 
 ### Search User with search/filter of group
-> luser -gs <user|number|email> <text to search> - Separated by  |
-> luser -gsl <user|number|email> <text to search>  - Separated by new line
+> luser -gs <user|number|email|sid> <text to search> - Separated by  |
+> luser -gsl <user|number|email|sid> <text to search>  - Separated by new line
 
 ### Search Groups / List Members
-> luser -G <group name>
+> luser -G <group|partial group name>
+
+### Unblock user
+> luser -u <user>
 
 ### Encrypt password to use on configs
 > luser -e <password to encrypt>
@@ -43,5 +46,5 @@ GOOS=darwin GOARCH=amd64 go build -o bin/macos/luser luser.go
 
 ## Maybe TODO
 
-* Remove password lock: delete pwdAccountLockedTime?
+* ~~Remove password lock: delete pwdAccountLockedTime?~~
 

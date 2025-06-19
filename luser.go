@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -10,16 +13,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"crypto/aes"
-	"crypto/cipher"
-	"encoding/base64"
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
 const (
-	Version     = "0.14"
+	Version     = "0.15"
 	colorRed    = "\033[91m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
@@ -31,7 +31,7 @@ const (
 )
 
 type Configs struct {
-	EncriptPassword  bool `yaml:"encryptpassword" env:"EncryptPassword" env-default:"false"`
+	EncriptPassword  bool   `yaml:"encryptpassword" env:"EncryptPassword" env-default:"false"`
 	BindUsername     string `yaml:"bindusername" env:"BindUsername" env-default:"cn=admin,ou=sysadmins,dc=test,dc=com"`
 	BindPassword     string `yaml:"bindpassword" env:"BindPassword" env-default:"secret_password"`
 	FQDN             string `yaml:"server" env:"FQDN" env-default:""`
@@ -98,10 +98,12 @@ func printHelp() {
 	fmt.Println(colorYellow + "> luser -gsl <user|number|email|partial name> <text to search> " + colorCyan + italicStart + " Separated by new line \n " + styleReset)
 	fmt.Println(colorBlue + "Search Groups / List Members")
 	fmt.Println(colorYellow + "> luser -G <group|partial group name> \n")
+	fmt.Println(colorBlue + "Unlock User")
+	fmt.Println(colorYellow + "> luser -u <user|sid> \n")
 	fmt.Println(colorBlue + "Create encrypted password")
-	fmt.Println(colorYellow + "> luser -e <password to encrypt>")
+	fmt.Println(colorYellow + "> luser -e <password to encrypt> \n")
 	fmt.Println(colorBlue + "Version")
-	fmt.Println(colorYellow + "> luser -v")
+	fmt.Println(colorYellow + "> luser -v \n")
 }
 
 // Look, i've found a flag pkg
@@ -115,7 +117,9 @@ var showGroupsSearch = flag.Bool("gs", false, "show groups with search")
 var showGroupsSearchList = flag.Bool("gls", false, "show groups with search in list")
 var showHelp = flag.Bool("h", false, "show help")
 var showVersion = flag.Bool("v", false, "show version")
+var unlockUser = flag.Bool("u", false, "unlock user")
 var bytes = []byte{35, 46, 57, 24, 85, 35, 24, 74, 87, 35, 88, 98, 66, 32, 14, 05}
+
 const MySecret string = "abc&h*~#^25#s2^=)^^7%b3g"
 
 func init() {
@@ -212,13 +216,13 @@ func main() {
 		if err != nil {
 			fmt.Println(colorRed+"Error decrypting your encrypted password: ", err)
 		}
-		cfg.BindPassword = decText;
+		cfg.BindPassword = decText
 
 		decText, err = Decrypt(cfg.Alt_BindPassword, MySecret)
 		if err != nil {
 			fmt.Println(colorRed+"Error decrypting your alternative encrypted password: ", err)
 		}
-		cfg.Alt_BindPassword = decText;
+		cfg.Alt_BindPassword = decText
 	}
 	//fmt.Println(cfg.BindPassword)
 
@@ -231,6 +235,12 @@ func main() {
 		log.Fatal(err)
 	}
 	defer l.Close()
+
+	if *unlockUser {
+		searchText = os.Args[2]
+		unlockUserFunc(l, cfg, searchText)
+		os.Exit(0)
+	}
 
 	if *searchGroup {
 		search := "(cn=*" + searchText + "*)"
@@ -281,15 +291,18 @@ func main() {
 				fmt.Println(colorCyan + "Searching alternative...")
 				l2, err := Connect(cfg, true)
 				if err != nil {
-					log.Fatal(err)
+					fmt.Printf(colorRed+"Error searching: %s ❌\n"+styleReset, err)
+					os.Exit(0)
 				}
 				defer l2.Close()
 				result, err = BindAndSearch(l2, cfg, search, true)
 				if err != nil {
-					log.Fatal(err)
+					fmt.Printf(colorRed+"Error searching: %s ❌\n"+styleReset, err)
+					os.Exit(0)
 				}
 			} else {
-				log.Fatal(err)
+				fmt.Printf(colorRed+"Error searching: %s ❌\n"+styleReset, err)
+				os.Exit(0)
 			}
 		}
 		outPutUserResults(result, showGroupsOptions, cfg)
@@ -302,11 +315,12 @@ func Encode(b []byte) string {
 
 func Decode(s string) []byte {
 	data, err := base64.StdEncoding.DecodeString(s)
- 	if err != nil {
-  		panic(err)
- 	}
- 	return data
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
+
 // Encrypt method is to encrypt or hide any classified text
 func Encrypt(text, MySecret string) (string, error) {
 	block, err := aes.NewCipher([]byte(MySecret))
@@ -386,15 +400,15 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 		corExpires := colorGreen
 		if resultado.GetAttributeValue("accountExpires") != "0" && resultado.GetAttributeValue("accountExpires") != "" {
 			ae, expiresIn := ldapTimeToUnixTimeDates(resultado.GetAttributeValue("accountExpires"))
-			if(expiresIn > 0 && expiresIn < 10000) {
+			if expiresIn > 0 && expiresIn < 10000 {
 				if expiresIn < 1 {
 					corExpires = colorRed
-				} else if(expiresIn < 27) {
+				} else if expiresIn < 27 {
 					corExpires = colorYellow
 				}
-				accountExpires = fmt.Sprintf(corExpires+"%d " + styleReset + "days (%s)", expiresIn, ae[:16])
+				accountExpires = fmt.Sprintf(corExpires+"%d "+styleReset+"days (%s)", expiresIn, ae[:16])
 			} else {
-				if(expiresIn < 10000) {
+				if expiresIn < 10000 {
 					accountExpires = ae
 				}
 			}
@@ -409,7 +423,7 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 				} else {
 					tempDomain = tempDomain + "." + strings.Replace(element, "DC=", "", -1)
 				}
-				
+
 			}
 		}
 		//resultado.PrettyPrint(2)
@@ -419,6 +433,7 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
 		fmt.Printf(colorBlue+"CN: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("cn"))
 		fmt.Printf(colorBlue+"Department: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("department"))
+		fmt.Printf(colorBlue+"Manager: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("manager"))
 		fmt.Printf(colorBlue+"Numbers: "+colorYellow+boldStart+"%s / %s\n"+styleReset, resultado.GetAttributeValue("employeeNumber"), resultado.GetAttributeValue("employeeID"))
 		fmt.Printf(colorBlue+"Blocked: "+colorYellow+boldStart+"%s\n"+styleReset, isBlocked)
 		fmt.Printf(colorBlue+"Status: "+colorYellow+boldStart+"%s\n"+styleReset, estadoConta)
@@ -431,7 +446,7 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 		fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("badPwdCount"))
 		fmt.Printf(colorBlue+"Script: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("scriptPath"))
 		fmt.Printf(colorBlue+"Domain: "+boldStart+colorYellow+" %s\n"+styleReset, tempDomain)
-		fmt.Printf(colorBlue+"DN: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("distinguishedName"))		
+		fmt.Printf(colorBlue+"DN: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("distinguishedName"))
 		fmt.Printf(colorBlue+"User Principal Name: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("userPrincipalName"))
 		objectSid := resultado.GetRawAttributeValue("objectSid")
 		sidCheck := resultado.GetAttributeValue("objectSid")
@@ -566,10 +581,10 @@ func displayGroups(groups []string, showGroupsOptions string) (result string) {
 			}
 		} else {
 			//otherwise just list all groups by line
-			if (showGroupsOptions == "l" || showGroupsOptions == "ls") {
+			if showGroupsOptions == "l" || showGroupsOptions == "ls" {
 				result = result + "🗂  " + strings.Replace(s[0], "CN=", "", -1) + " \n "
 			} else {
-				result = result + strings.Replace(s[0], "CN=", "", -1)  + " | "
+				result = result + strings.Replace(s[0], "CN=", "", -1) + " | "
 			}
 		}
 	}
@@ -585,7 +600,7 @@ func displayUsers(users []string) (result string) {
 }
 
 func ldapTimeToUnixTimeDates(ldaptime string) (tm string, expDays int) {
-	if ldaptime == "" {
+	if ldaptime == "" || ldaptime == "0" {
 		tm = ""
 		expDays = 0
 	} else {
@@ -610,7 +625,7 @@ func ldapTimeToUnixTimeDates(ldaptime string) (tm string, expDays int) {
 }
 
 func ldapTimeToUnixTime(ldaptime string, cfg Configs) (tm string, expDays int) {
-	if ldaptime == "" {
+	if ldaptime == "" || ldaptime == "0" {
 		tm = ""
 		expDays = 0
 	} else {
@@ -672,13 +687,13 @@ func getAccountStatus(code string) (resultado string) {
 	case "65536":
 		resultado = "DONT_EXPIRE_PASSWORD"
 	case "66048":
-		resultado = colorGreen + "Enabled, Password Doesn’t Expire ✅"
+		resultado = colorGreen + "Enabled, Password Doesn't Expire ✅"
 	case "66050":
-		resultado = colorRed + "Disabled, Password Doesn’t Expire ❌"
+		resultado = colorRed + "Disabled, Password Doesn't Expire ❌"
 	case "66080":
-		resultado = colorRed + "Disabled, Password Doesn’t Expire & Not Required ❌"
+		resultado = colorRed + "Disabled, Password Doesn't Expire & Not Required ❌"
 	case "66082":
-		resultado = colorRed + "Disabled, Password Doesn’t Expire & Not Required ❌"
+		resultado = colorRed + "Disabled, Password Doesn't Expire & Not Required ❌"
 	case "131072":
 		resultado = "MNS_LOGON_ACCOUNT"
 	case "262144":
@@ -690,9 +705,9 @@ func getAccountStatus(code string) (resultado string) {
 	case "262690":
 		resultado = colorRed + "Disabled, Smartcard Required, Password Not Required ❌"
 	case "328194":
-		resultado = colorRed + "Disabled, Smartcard Required, Password Doesn’t Expire ❌"
+		resultado = colorRed + "Disabled, Smartcard Required, Password Doesn't Expire ❌"
 	case "328226":
-		resultado = colorRed + "Disabled, Smartcard Required, Password Doesn’t Expire & Not Required ❌"
+		resultado = colorRed + "Disabled, Smartcard Required, Password Doesn't Expire & Not Required ❌"
 	case "524288":
 		resultado = colorGreen + "TRUSTED_FOR_DELEGATION ✅"
 	case "590336":
@@ -752,4 +767,59 @@ func getPasswordExpireIgnore(code string) (resultado bool) {
 		resultado = false
 	}
 	return resultado
+}
+
+func unlockUserFunc(l *ldap.Conn, cfg Configs, searchText string) bool {
+	fmt.Println(colorCyan + "Unlocking user...")
+
+	useUser := cfg.BindUsername
+	usePass := cfg.BindPassword
+	useBase := cfg.BaseDN
+
+	l.Bind(useUser, usePass)
+
+	search := "(|(samaccountname=" + searchText + ")(mail=" + searchText + ")(objectSid=" + searchText + "))"
+
+	searchReq := ldap.NewSearchRequest(
+		useBase,
+		ldap.ScopeWholeSubtree, // you can also use ldap.ScopeBaseObject
+		ldap.NeverDerefAliases,
+		0,
+		0,
+		false,
+		search,
+		[]string{"lockoutTime", "distinguishedName"},
+		nil,
+	)
+	sr, err := l.Search(searchReq)
+	if err != nil {
+		fmt.Printf(colorRed+"Error searching: %s ❌\n"+styleReset, err)
+		return false
+	}
+
+	if len(sr.Entries) != 1 {
+		fmt.Printf(colorRed+"User '%s' not found or multiple entries returned. ❌\n"+styleReset, searchText)
+		return false
+	}
+
+	currentLockoutTime := sr.Entries[0].GetAttributeValue("lockoutTime")
+	distinguishedName := sr.Entries[0].GetAttributeValue("distinguishedName")
+	if currentLockoutTime == "" || currentLockoutTime == "0" {
+		fmt.Printf(colorBlue+"User "+boldStart+colorYellow+"'%s'"+colorBlue+" does not appear to be locked out (lockoutTime is %q). No action needed.\n"+styleReset, searchText, currentLockoutTime)
+		return false
+	}
+
+	fmt.Printf(colorBlue+"Current lockoutTime for "+boldStart+colorYellow+"'%s'"+colorRed+" (account appears locked)\n"+styleReset, searchText)
+
+	modifyRequest := ldap.NewModifyRequest(distinguishedName, nil)
+	modifyRequest.Replace("lockoutTime", []string{"0"})
+
+	err = l.Modify(modifyRequest)
+	if err != nil {
+		fmt.Printf(colorRed+"Error modifying user '%s': %v ❌\n"+styleReset, searchText, err)
+		return false
+	}
+
+	fmt.Printf(colorBlue+"Successfully unblocked user: "+boldStart+colorYellow+"'%s'"+colorGreen+" ✅\n"+styleReset, searchText)
+	return true
 }
