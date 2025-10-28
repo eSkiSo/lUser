@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	Version     = "0.15"
+	Version     = "0.16"
+	colorWhite  = "\033[39m"
 	colorRed    = "\033[91m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
@@ -243,9 +244,9 @@ func main() {
 	}
 
 	if *searchGroup {
-		search := "(cn=*" + searchText + "*)"
+		search := "(&(cn=*" + searchText + "*)(!(objectClass=computer)))"
 
-		fmt.Println(search)
+		//fmt.Println(search)
 
 		result, err := BindAndSearch(l, cfg, search, false)
 		if err != nil || *searchAlternative {
@@ -277,7 +278,7 @@ func main() {
 	} else {
 
 		// Normal Bind and Search
-		search := "(|(uid=" + searchText + ")(employeeID=" + searchText + ")(employeeNumber=" + searchText + ")(samaccountname=" + searchText + ")(samaccountname=" + searchText + "*)(mail=" + searchText + ")(displayName=*" + searchText + "*)(objectSid=" + searchText + "))"
+		search := "(&(!(objectClass=computer))(|(uid=" + searchText + ")(employeeID=" + searchText + ")(employeeNumber=" + searchText + ")(samaccountname=" + searchText + ")(samaccountname=" + searchText + "*)(mail=" + searchText + ")(displayName=*" + searchText + "*)(objectSid=" + searchText + ")))"
 
 		result, err := BindAndSearch(l, cfg, search, false)
 		if err != nil || *searchAlternative {
@@ -428,35 +429,38 @@ func outPutUserResults(result *ldap.SearchResult, showGroupsOptions string, cfg 
 		}
 		//resultado.PrettyPrint(2)
 
-		fmt.Printf(colorBlue+"User: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("sAMAccountName"))
-		fmt.Printf(colorBlue+"Name: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("displayName"))
-		fmt.Printf(colorBlue+"Email: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
-		fmt.Printf(colorBlue+"CN: "+colorYellow+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("cn"))
-		fmt.Printf(colorBlue+"Department: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("department"))
-		fmt.Printf(colorBlue+"Manager: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("manager"))
-		fmt.Printf(colorBlue+"Numbers: "+colorYellow+boldStart+"%s / %s\n"+styleReset, resultado.GetAttributeValue("employeeNumber"), resultado.GetAttributeValue("employeeID"))
-		fmt.Printf(colorBlue+"Blocked: "+colorYellow+boldStart+"%s\n"+styleReset, isBlocked)
-		fmt.Printf(colorBlue+"Status: "+colorYellow+boldStart+"%s\n"+styleReset, estadoConta)
-		fmt.Printf(colorBlue+"Account Expires: "+colorYellow+boldStart+"%s\n"+styleReset, accountExpires)
-		fmt.Printf(colorBlue+"Password Changed in: "+boldStart+colorYellow+" %s\n"+styleReset, passwordAlterada)
+		fmt.Printf(colorBlue+"User: "+colorWhite+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("sAMAccountName"))
+		fmt.Printf(colorBlue+"Name: "+colorWhite+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("displayName"))
+		fmt.Printf(colorBlue+"Email: "+colorWhite+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("mail"))
+		fmt.Printf(colorBlue+"Employee (Number / ID): "+colorWhite+boldStart+"%s / %s\n"+styleReset, resultado.GetAttributeValue("employeeNumber"), resultado.GetAttributeValue("employeeID"))
+		fmt.Printf(colorBlue+"CN: "+colorWhite+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("cn"))
+		fmt.Printf(colorBlue+"Title: "+colorWhite+boldStart+"%s"+styleReset+" \n", resultado.GetAttributeValue("title"))
+		fmt.Printf(colorBlue+"Department: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("department"))
+		fmt.Printf(colorBlue+"Company: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("company"))
+		fmt.Printf(colorBlue+"Country: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("co"))
+		fmt.Printf(colorBlue+"Manager: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("manager"))
+		fmt.Printf(colorBlue+"Blocked: "+colorWhite+boldStart+"%s\n"+styleReset, isBlocked)
+		fmt.Printf(colorBlue+"Status: "+colorWhite+boldStart+"%s\n"+styleReset, estadoConta)
+		fmt.Printf(colorBlue+"Account Expires: "+colorWhite+boldStart+"%s\n"+styleReset, accountExpires)
+		fmt.Printf(colorBlue+"Password Changed in: "+boldStart+colorWhite+" %s\n"+styleReset, passwordAlterada)
 		if !ignoreExpireDate {
 			fmt.Printf(colorBlue+"Password Expires in: "+boldStart+corTempo+" %d days\n"+styleReset, expirationDays)
 		}
-		fmt.Printf(colorBlue+"Last Logon: "+boldStart+colorYellow+" %s\n"+styleReset, lastLogon)
-		fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("badPwdCount"))
-		fmt.Printf(colorBlue+"Script: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("scriptPath"))
-		fmt.Printf(colorBlue+"Domain: "+boldStart+colorYellow+" %s\n"+styleReset, tempDomain)
-		fmt.Printf(colorBlue+"DN: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("distinguishedName"))
-		fmt.Printf(colorBlue+"User Principal Name: "+boldStart+colorYellow+" %s\n"+styleReset, resultado.GetAttributeValue("userPrincipalName"))
+		fmt.Printf(colorBlue+"Last Logon: "+boldStart+colorWhite+" %s\n"+styleReset, lastLogon)
+		fmt.Printf(colorBlue+"Wrong Passwords: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("badPwdCount"))
+		fmt.Printf(colorBlue+"Script: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("scriptPath"))
+		fmt.Printf(colorBlue+"Domain: "+boldStart+colorWhite+" %s\n"+styleReset, tempDomain)
+		fmt.Printf(colorBlue+"DN: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("distinguishedName"))
+		fmt.Printf(colorBlue+"User Principal Name: "+boldStart+colorWhite+" %s\n"+styleReset, resultado.GetAttributeValue("userPrincipalName"))
 		objectSid := resultado.GetRawAttributeValue("objectSid")
 		sidCheck := resultado.GetAttributeValue("objectSid")
 		sid := ""
 		if sidCheck != "" {
 			sid = DecodeSID(objectSid)
 		}
-		fmt.Printf(colorBlue+"SID: "+boldStart+colorYellow+" %s\n"+styleReset, sid)
+		fmt.Printf(colorBlue+"SID: "+boldStart+colorWhite+" %s\n"+styleReset, sid)
 		if *showGroups {
-			fmt.Printf(colorBlue+"Groups: "+boldStart+colorYellow+" %v\n"+styleReset, groups)
+			fmt.Printf(colorBlue+"Groups: "+boldStart+colorWhite+" %v\n"+styleReset, groups)
 		}
 		fmt.Println("--------")
 	}
