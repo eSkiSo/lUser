@@ -144,6 +144,11 @@ func main() {
 	showGroupsOptions := "p"
 
 	if *encryptPassword {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -e <password>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 		encText, err := Encrypt(searchText, MySecret)
 		if err != nil {
@@ -164,6 +169,11 @@ func main() {
 	}
 
 	if *generateaPassword {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -pass <pass size>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		arg2 := os.Args[2]
 
 		passSize, err := strconv.Atoi(arg2)
@@ -181,38 +191,73 @@ func main() {
 	}
 
 	if *showGroupsList {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -gl <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 		showGroupsOptions = "l"
 		*showGroups = true
 	}
 
 	if *searchAlternative {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -a <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 	}
 
 	if *showGroupsPipe {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -gp <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 		showGroupsOptions = "p"
 		*showGroups = true
 	}
 
 	if *showGroups {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -g <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 	}
 
 	if *showGroupsSearch {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -gs <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 		showGroupsOptions = "s"
 		*showGroups = true
 	}
 
 	if *showGroupsSearchList {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -gls <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 		showGroupsOptions = "ls"
 		*showGroups = true
 	}
 
 	if *searchGroup {
+		if len(os.Args) < 3 {
+			fmt.Print(colorRed + boldStart + "You must supply a second parameter (luser -G <search>)" + styleReset + "\n")
+			printHelp()
+			os.Exit(0)
+		}
 		searchText = os.Args[2]
 	}
 
