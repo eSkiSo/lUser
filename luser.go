@@ -5,9 +5,11 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"flag"
+	"crypto/rand"
 	"fmt"
 	"log"
 	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,7 +21,7 @@ import (
 )
 
 const (
-	Version     = "0.16"
+	Version     = "0.17"
 	colorWhite  = "\033[39m"
 	colorRed    = "\033[91m"
 	colorGreen  = "\033[32m"
@@ -101,8 +103,10 @@ func printHelp() {
 	fmt.Println(colorYellow + "> luser -G <group|partial group name> \n")
 	fmt.Println(colorBlue + "Unlock User")
 	fmt.Println(colorYellow + "> luser -u <user|sid> \n")
-	fmt.Println(colorBlue + "Create encrypted password")
+	fmt.Println(colorBlue + "Create encrypted LDAP password")
 	fmt.Println(colorYellow + "> luser -e <password to encrypt> \n")
+	fmt.Println(colorBlue + "Generate a randowm password")
+	fmt.Println(colorYellow + "> luser -pass <size> \n")
 	fmt.Println(colorBlue + "Version")
 	fmt.Println(colorYellow + "> luser -v \n")
 }
@@ -116,6 +120,7 @@ var showGroupsList = flag.Bool("gl", false, "show groups in list")
 var showGroupsPipe = flag.Bool("gp", false, "show groups pipped")
 var showGroupsSearch = flag.Bool("gs", false, "show groups with search")
 var showGroupsSearchList = flag.Bool("gls", false, "show groups with search in list")
+var generateaPassword = flag.Bool("pass", false, "generate a randowm password")
 var showHelp = flag.Bool("h", false, "show help")
 var showVersion = flag.Bool("v", false, "show version")
 var unlockUser = flag.Bool("u", false, "unlock user")
@@ -155,6 +160,23 @@ func main() {
 
 	if *showVersion {
 		fmt.Printf(colorCyan+boldStart+"lUser LDAP Cli v %v \n"+styleReset, Version)
+		os.Exit(0)
+	}
+
+	if *generateaPassword {
+		arg2 := os.Args[2]
+
+		passSize, err := strconv.Atoi(arg2)
+		if err != nil {
+			fmt.Println("Size must be provided, example: luser -pass 14")
+			os.Exit(0)
+		}
+
+		genPass, err := generatePassword(passSize)
+		if err != nil {
+			fmt.Println("Error generating a password: ", err)
+		}
+		fmt.Printf(colorCyan+boldStart+"Generated Random Password (%d) :\033[0m %s \n"+styleReset, passSize, genPass)
 		os.Exit(0)
 	}
 
@@ -320,6 +342,75 @@ func Decode(s string) []byte {
 		panic(err)
 	}
 	return data
+}
+
+// generatePassword creates a random password of given size
+func generatePassword(passSize int) (string, error) {
+	if passSize < 4 {
+		return "", fmt.Errorf("password size must be at least 4")
+	}
+
+	// Character sets (excluding confusing characters like O, 0, l, 1, etc.)
+	lowercase := "abcdefghijkmnopqrstuvwxyz"      // no 'l'
+	uppercase := "ABCDEFGHJKLMNPQRSTUVWXYZ"      // no 'O'
+	numbers := "23456789"                        // no '0', '1'
+	symbols := "!@#$&*-_=+.-?"
+
+	allChars := lowercase + uppercase + numbers + symbols
+
+	password := make([]byte, passSize)
+
+	// Helper to get random char from a set
+	getRandomChar := func(charset string) (byte, error) {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return 0, err
+		}
+		return charset[n.Int64()], nil
+	}
+
+	var err error
+
+	// Ensure at least one of each required type
+	password[0], err = getRandomChar(lowercase)
+	if err != nil {
+		return "", err
+	}
+
+	password[1], err = getRandomChar(uppercase)
+	if err != nil {
+		return "", err
+	}
+
+	password[2], err = getRandomChar(numbers)
+	if err != nil {
+		return "", err
+	}
+
+	password[3], err = getRandomChar(symbols)
+	if err != nil {
+		return "", err
+	}
+
+	// Fill remaining characters
+	for i := 4; i < passSize; i++ {
+		password[i], err = getRandomChar(allChars)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// Shuffle password to avoid predictable positions
+	for i := range password {
+		jRand, err := rand.Int(rand.Reader, big.NewInt(int64(len(password))))
+		if err != nil {
+			return "", err
+		}
+		j := int(jRand.Int64())
+		password[i], password[j] = password[j], password[i]
+	}
+
+	return string(password), nil
 }
 
 // Encrypt method is to encrypt or hide any classified text
